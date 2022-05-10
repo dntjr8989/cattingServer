@@ -1,0 +1,154 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+  <h1>{{title}}</h1>
+  <div id = 'participants'>현재 채팅방 참여자 수 : {{num}}</div>
+  <div id = 'host'>방장 : {{room.owner}}</div>
+  <a href = '/' id = "exit-btn">방 나가기</a>
+  <fieldset>
+    <legend>채팅 내용</legend>
+    <div id="chat-list">
+      {% for chat in chats %}
+        {% if chat.user === user %}
+          <div class="mine" style="color: {{chat.user}}">
+            <div>{{chat.user}}</div>
+            {% if chat.gif %}}
+              <img src="/gif/{{chat.gif}}">
+            {% else %}
+              <div>{{chat.chat}}</div>
+            {% endif %}
+          </div>
+        {% elif chat.user === 'system' %}
+          <div class="system">
+            <div>{{chat.chat}}</div>
+          </div>
+        {% else %}
+          <div class="other" style="color: {{chat.user}}">
+            <div>{{chat.user}}</div>
+            {% if chat.gif %}
+              <img src="/gif/{{chat.gif}}">
+            {% else %}
+              <div>{{chat.chat}}</div>
+            {% endif %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </fieldset>
+  <form action="/chat" id="chat-form" method="post" enctype="multipart/form-data">
+    <label for="gif">GIF 올리기</label>
+    <input type="file" id="gif" name="gif" accept="image/gif">
+    <input type="text" id="chat" name="chat">
+    <button type="submit">전송</button>
+  </form>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io.connect('http://localhost:8005/chat', {
+      path: '/socket.io',
+    });
+    socket.on('join', function (data) {
+      const div = document.createElement('div');
+      div.classList.add('system');
+      const chat = document.createElement('div');
+      div.textContent = data.chat;
+      div.appendChild(chat);
+      document.querySelector('#chat-list').appendChild(div);
+
+      document.getElementById('participants').textContent = '현재 채팅방 참여자수 : ' + data.num;
+    });
+    socket.on('exit', function (data) {
+      const div = document.createElement('div');
+      div.classList.add('system');
+      const chat = document.createElement('div');
+      div.textContent = data.chat;
+      div.appendChild(chat);
+      document.querySelector('#chat-list').appendChild(div);
+
+      document.getElementById('participants').textContent = '현재 채팅방 참여자수 : ' + data.num;
+    });
+    socket.on('dm', function(data){
+      alert(`${data.from}님으로부터 온 메세지 : ` + data.talk );
+    });
+    socket.on('kick', function(data){
+      alert('방에서 강퇴당하셨습니다.');
+      location.href = "http://localhost:8005";
+    });
+    socket.on('chat', function (data) {
+      const div = document.createElement('div');
+      if (data.chat.user === '{{user}}') {
+        div.classList.add('mine');
+      } else {
+        div.classList.add('other');
+      }
+      const name = document.createElement('div');
+      name.textContent = data.chat.user;
+      if(div.classList.contains('other'))
+     {
+        const button = document.createElement('button');
+        button.textContent = '귓속말';
+        button.dataset.user = data.chat.user;
+        button.dataset.sid = data.sid;
+        button.addEventListener('click', buttonf);
+
+        if('{{user}}' === '{{room.owner}}')
+        {
+          const button1 = document.createElement('button');
+          button1.textContent = '강퇴';
+          button1.dataset.sid = data.sid;
+          button1.addEventListener('click', buttonf1);
+          name.appendChild(button1);
+        }
+      }
+      div.appendChild(name);
+      if (data.chat.chat) {
+        const chat = document.createElement('div');
+        chat.textContent = data.chat.chat;
+        div.appendChild(chat);
+      } else {
+        const gif = document.createElement('img');
+        gif.src = '/gif/' + data.chat.gif;
+        div.appendChild(gif);
+      }
+      div.style.color = data.chat.user;
+      document.querySelector('#chat-list').appendChild(div);
+    });
+
+    document.querySelector('#chat-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (e.target.chat.value) {
+        axios.post('/room/{{room._id}}/chat', {
+          chat: this.chat.value,
+          sid: socket.id,
+        })
+          .then(() => {
+            e.target.chat.value = '';
+          })  
+          .catch((err) => {
+            console.error(err);
+          });
+      }
+    });
+    document.querySelector('#gif').addEventListener('change', function (e) {
+      console.log(e.target.files);
+      const formData = new FormData();
+      formData.append('gif', e.target.files[0]);
+      axios.post('/room/{{room._id}}/gif', formData, {})
+        .then(() => {
+          e.target.file = null;
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+    });
+    function buttonf(e)
+    {
+      const talk = prompt('귓속말로 보낼 말을 입력하세요');
+      socket.emit('dm', {talk, sid : e.target.dataset.sid, from : e.target.dataset.user,});
+    };
+    function buttonf1(e)
+    {
+      socket.emit('kick', {sid : e.target.dataset.sid, name:'{{user}}'});
+    };
+  </script>
+{% endblock %}
